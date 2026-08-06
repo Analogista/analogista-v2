@@ -1,0 +1,166 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Motion } from './motion';
+import { Voice } from './voice';
+
+type Screen = 'home' | 'calib' | 'test' | 'esito';
+type Esito = { dx: string; sx: string; risultato: string };
+
+const CALIB_TEXT = "Poggia lo smartphone o il pc di fronte a te e mettiti in piedi. E' sufficiente che la telecamera inquadri il tuo busto, dalla vita alla testa. Questo test ci servira' per calibrare l'oscillazione del tuo corpo, in avanti o indietro. In alto trovi la barra per regolare la sensibilita'. Quando premerai il pulsante di calibrazione ci sara' un conto alla rovescia da 5 a 0 che congelera' la posizione iniziale del tuo corpo. Buona continuazione.";
+
+const label = (r: string) => (r === 'SI' ? 'Avanti' : r === 'NO' ? 'Indietro' : 'Non rilevato');
+
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('home');
+  const [nome, setNome] = useState(() => localStorage.getItem('av2_nome') || '');
+  const [statusMsg, setStatusMsg] = useState<{ kind: string; text: string } | null>(null);
+  const [esito, setEsito] = useState<Esito | null>(null);
+  const motionRef = useRef<Motion | null>(null);
+  const voiceRef = useRef<Voice | null>(null);
+  if (!motionRef.current) motionRef.current = new Motion();
+  if (!voiceRef.current) {
+    voiceRef.current = new Voice();
+    voiceRef.current.onStatus = (i) => setStatusMsg(i.text ? i : null);
+  }
+  const motion = motionRef.current!;
+  const voice = voiceRef.current!;
+  const goHome = () => {
+    try { voice.cancel(); } catch (e) {}
+    try { motion.stop(); motion.onMove = null; } catch (e) {}
+    setScreen('home');
+  };
+  return (
+    <div className="min-h-screen font-sans">
+      {statusMsg && (
+        <div className={`fixed top-0 left-0 right-0 z-[100] px-4 py-2 text-center text-xs font-mono ${statusMsg.kind === 'error' ? 'bg-rose-950 text-rose-300' : 'bg-cyan-950 text-cyan-300'}`}>
+          {statusMsg.text}
+        </div>
+      )}
+      <header className="pt-8 pb-4 text-center">
+        <h1 className="font-serif font-black text-2xl text-cyan-400">Analogista Virtuale</h1>
+        <p className="text-[10px] uppercase tracking-widest text-gray-500">© 2026 Max Pisani - PACommunication</p>
+      </header>
+      {screen === 'home' && <Home nome={nome} onStart={(n: string) => { setNome(n); setScreen('calib'); }} />}
+      {screen === 'calib' && <Calibrazione motion={motion} voice={voice} onHome={goHome} onDone={() => setScreen('test')} />}
+      {screen === 'test' && <TestInduttore motion={motion} voice={voice} nome={nome || 'ospite'} onHome={goHome} onEsito={(e: Esito) => { setEsito(e); setScreen('esito'); }} />}
+      {screen === 'esito' && esito && <EsitoScreen esito={esito} onHome={goHome} />}
+    </div>
+  );
+}
+
+function Home({ nome, onStart }: { nome: string; onStart: (n: string) => void }) {
+  const [n, setN] = useState(nome);
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="max-w-md mx-auto px-6 pb-16">
+      <div className="bg-gray-900/60 border border-white/10 rounded-2xl p-6 space-y-4">
+        <label className="block text-xs font-bold uppercase tracking-widest text-gray-400">Nome del soggetto</label>
+        <input value={n} onChange={(e) => setN(e.target.value)} placeholder="Es. Mario"
+          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-cyan-400" />
+        <div className="text-xs text-gray-400 bg-black/30 rounded-lg p-4 h-36 overflow-y-auto">
+          <p className="font-bold text-gray-200 mb-2">ACCORDO DI RISERVATEZZA (NDA)</p>
+          <p>Lo strumento e' fornito "cosi' com'e" per finalita' di intrattenimento e approfondimento personale. Non costituisce dispositivo medico ne' fornisce diagnosi. L'utilizzatore si impegna a non diffondere contenuti, esiti o metodologie. I dati restano sul dispositivo e sotto la responsabilita' dell'operatore.</p>
+        </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-1" />
+          Ho letto e accetto l'accordo di riservatezza.
+        </label>
+        <button disabled={!checked || !n.trim()} onClick={() => { localStorage.setItem('av2_nome', n.trim()); localStorage.setItem('av2_nda', '1'); onStart(n.trim()); }}
+          className="w-full bg-cyan-600 disabled:bg-gray-700 disabled:text-gray-400 hover:bg-cyan-500 text-white font-black py-4 rounded-2xl uppercase tracking-widest">
+          Inizia
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, flash }: {
+  motion: Motion; sensitivity: number; onCalibrated?: () => void; onVoiceGuide?: () => void; flash: string | null;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [ready, setReady] = useState(false);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  const [calibrating, setCalibrating] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        if (cancelled || !videoRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const video = videoRef.current;
+        video.srcObject = stream;
+        await video.play();
+        await motion.init(video);
+        motion.setSensitivity(sensitivity);
+        motion.start();
+        if (!cancelled) setReady(true);
+      } catch (e) {
+        if (!cancelled) setCamError('Permesso fotocamera negato o hardware non disponibile.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      motion.stop();
+      const v = videoRef.current;
+      if (v && v.srcObject) (v.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    };
+  }, [motion]);
+  useEffect(() => { motion.setSensitivity(sensitivity); }, [sensitivity, motion]);
+  const calibrate = () => {
+    if (calibrating || !ready) return;
+    setCalibrating(true);
+    motion.stop();
+    setCountdown(5);
+    const t = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(t);
+          setTimeout(() => { motion.start(); motion.calibrate(); setCalibrating(false); if (onCalibrated) onCalibrated(); }, 500);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+  return (
+    <div className="relative w-full max-w-3xl mx-auto h-[420px] sm:h-[520px] bg-black rounded-3xl overflow-hidden border border-white/10">
+      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <svg viewBox="0 0 200 300" className="h-[90%] opacity-30">
+          <path d="M100,50 C80,50 70,70 70,90 C70,110 80,130 100,130 C120,130 130,110 130,90 C130,70 120,50 100,50 M70,140 C40,140 20,180 20,220 L20,300 L180,300 L180,220 C180,180 160,140 130,140 L70,140" fill="none" stroke="white" strokeWidth="2" strokeDasharray="5,5" />
+        </svg>
+      </div>
+      <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/70 border border-white/10 text-[10px] font-mono uppercase tracking-wider">
+        {calibrating ? 'CALIBRAZIONE (' + countdown + 's)' : ready ? 'PRONTO' : camError ? 'ERRORE CAMERA' : 'ATTESA…'}
+      </div>
+      {flash && (
+        <div className={`absolute top-4 right-4 px-6 py-2 rounded-2xl border-2 text-3xl font-black ${flash === 'SI' ? 'border-green-400 text-green-400' : 'border-rose-500 text-rose-500'}`}>{flash}</div>
+      )}
+      {calibrating && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60">
+          <div className="text-white text-[9rem] font-black">{countdown}</div>
+        </div>
+      )}
+      {camError && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/90 p-6 text-center text-rose-400 text-sm">{camError}</div>
+      )}
+      <div className="absolute bottom-4 inset-x-4 flex justify-center gap-3 flex-wrap">
+        <button onClick={calibrate} disabled={!ready || calibrating}
+          className="px-5 py-2.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 border border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest">
+          {calibrating ? 'Calibrazione…' : '▶ Avvia calibrazione'}
+        </button>
+        {onVoiceGuide && (
+          <button onClick={onVoiceGuide} disabled={!ready || calibrating}
+            className="px-5 py-2.5 bg-indigo-600/90 hover:bg-indigo-500 disabled:opacity-30 border border-indigo-400/40 rounded-xl text-[10px] font-bold uppercase tracking-widest">
+            🔊 Ascolta voce guida
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Calibrazione({ motion, voice, onDone, onHome }: { motion: Motion; voice: Voice; onDone: () => void; onHome: () => void }) {
+  const [sens, setSens] = useState(75);
+  const [done, setDone] = useState(false);
+  const [flash, setFlash] =
