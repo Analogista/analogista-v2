@@ -1,0 +1,122 @@
+name: Build Apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Dipendenze
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install --legacy-peer-deps --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor-community/text-to-speech@5
+      - name: Asset offline
+        run: node scripts/prepare-offline-assets.mjs
+      - name: Config Capacitor
+        run: |
+          cat > capacitor.config.ts << 'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+          const config: CapacitorConfig = {
+            appId: 'com.pacommunication.analogista2',
+            appName: 'Analogista Virtuale',
+            webDir: 'dist',
+            server: { androidScheme: 'https' }
+          };
+          export default config;
+          EOF
+      - name: Build web
+        run: npx vite build
+      - name: Piattaforma Android
+        run: npx cap add android
+      - name: Permessi
+        run: |
+          sed -i 's#</manifest>#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
+      - name: Licenze
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Compila APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Pubblica APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2-build-${{ github.run_number }}
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dipendenze
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install -D --legacy-peer-deps --no-audit --no-fund electron@33 electron-builder@25
+          npm install --legacy-peer-deps --no-audit --no-fund @capacitor-community/text-to-speech@5
+      - name: Build web
+        run: npx vite build
+      - name: Prepara Electron
+        shell: bash
+        run: |
+          mkdir -p electron dist-electron
+          cat > electron/main.cjs << 'EOF'
+          const { app, BrowserWindow, session } = require('electron');
+          const path = require('path');
+          const fs = require('fs');
+          const http = require('http');
+          const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
+          function startServer() {
+            const dist = path.join(__dirname, '..', 'dist');
+            return new Promise((resolve) => {
+              const srv = http.createServer((req, res) => {
+                let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+                let file = path.join(dist, p);
+                if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { file = path.join(dist, 'index.html'); }
+                res.setHeader('Content-Type', MIME[path.extname(file)] || 'application/octet-stream');
+                res.end(fs.readFileSync(file));
+              });
+              srv.listen(0, '127.0.0.1', () => resolve(srv.address().port));
+            });
+          }
+          async function main() {
+            const port = await startServer();
+            session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['media', 'camera', 'microphone', 'audioCapture', 'videoCapture', 'mediaKeySystem'].includes(permission)));
+            const win = new BrowserWindow({ width: 1100, height: 800, title: 'Analogista Virtuale di Max Pisani', autoHideMenuBar: true });
+            win.loadURL('http://127.0.0.1:' + port);
+          }
+          app.whenReady().then(main);
+          app.on('window-all-closed', () => app.quit());
+          EOF
+          cat > electron-builder.yml << 'EOF'
+          appId: com.pacommunication.analogista2
+          productName: Analogista Virtuale
+          directories:
+            output: release
+          files:
+            - dist/**/*
+            - dist-electron/**/*
+            - package.json
+          win:
+            target: nsis
+          EOF
+          npm pkg set main=dist-electron/main.cjs
+          npx esbuild electron/main.cjs --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron
+      - name: Compila installer
+        run: npx electron-builder --win --publish never
+      - name: Pubblica installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2-build-${{ github.run_number }}
+          files: release/*.exe
