@@ -240,4 +240,185 @@ jobs:
                 setRes({ dx: label(dx), sx: label(sx) });
                 let risultato = '';
                 if (dx === 'SI' && sx === 'NO') risultato = 'Induttore DESTRO (Sindrome di Giulietta e Romeo: difficoltà a decidere).';
-               
+                else if (dx === 'NO' && sx === 'SI') risultato = 'Induttore SINISTRO (Sindrome di Dante e Beatrice: problema di sogno/conquista).';
+                else risultato = 'Combinazione non chiara: ripeti il test.';
+                const e: Esito = { dx: label(dx), sx: label(sx), risultato };
+                setFinalEsito(e);
+                setMsg(risultato);
+                try { motion.onMove = null; motion.stop(); } catch (err) {}
+                try {
+                  const hist = JSON.parse(localStorage.getItem('av2_hist') || '[]');
+                  hist.unshift({ when: new Date().toLocaleString(), ...e });
+                  localStorage.setItem('av2_hist', JSON.stringify(hist.slice(0, 20)));
+                } catch (err) {}
+                setPhase('wait');
+              } catch (e) {
+                if (alive.current) { setMsg('Test interrotto.'); setPhase('calib'); }
+              }
+            };
+            const repeat = () => { try { voice.cancel(); } catch (e) {} try { motion.stop(); motion.onMove = null; } catch (e) {} setRes({ dx: '', sx: '' }); setFinalEsito(null); setPhase('calib'); setMsg('Premi "Avvia calibrazione" sul video.'); };
+            return (
+              <div className="max-w-4xl mx-auto px-4 pb-24 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-serif font-black text-cyan-400">TEST INDUTTORE</h2>
+                  <button onClick={onHome} className="text-xs font-bold uppercase tracking-widest text-cyan-500">← Esci</button>
+                </div>
+                <CameraView motion={motion} sensitivity={75} flash={flash} onCalibrated={() => { if (phase === 'calib') run(); }} />
+                <div className="text-center p-6 rounded-2xl bg-gray-900/40 border border-gray-800 min-h-[90px] flex flex-col justify-center">
+                  <p className="text-lg text-gray-200">{msg}</p>
+                  <div className="mt-3 flex justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                    <p>DX: <span className="text-cyan-400">{res.dx || '-'}</span></p>
+                    <p>SX: <span className="text-cyan-400">{res.sx || '-'}</span></p>
+                  </div>
+                </div>
+                <div className="fixed bottom-6 left-0 right-0 flex justify-center gap-3 px-4 z-50">
+                  {phase !== 'calib' && (
+                    <button onClick={repeat} className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-2xl text-xs font-black uppercase tracking-widest border border-white/10">🔁 Ripeti</button>
+                  )}
+                  {phase === 'wait' && finalEsito && (
+                    <button onClick={() => onEsito(finalEsito)} className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest">Prosegui →</button>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          function EsitoScreen({ esito, onHome }: { esito: Esito; onHome: () => void }) {
+            return (
+              <div className="max-w-md mx-auto px-6 pb-16">
+                <div className="bg-gray-900/60 border border-white/10 rounded-2xl p-6 space-y-4 text-center">
+                  <h2 className="text-lg font-serif font-black text-cyan-400">ESITO TEST INDUTTORE</h2>
+                  <p className="text-sm text-gray-400">Mano destra: <span className="text-cyan-400 font-bold">{esito.dx}</span></p>
+                  <p className="text-sm text-gray-400">Mano sinistra: <span className="text-cyan-400 font-bold">{esito.sx}</span></p>
+                  <p className="text-base text-gray-100 font-semibold">{esito.risultato}</p>
+                  <p className="text-[10px] text-gray-500">Dati salvati solo su questo dispositivo.</p>
+                  <button onClick={onHome} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Nuova sessione</button>
+                </div>
+              </div>
+            );
+          }
+          APPFILE_EOF
+
+      - name: Commit automatico
+        run: |
+          git config user.name "factory-bot"
+          git config user.email "factory-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "Factory v2: interfaccia completa"
+          git push origin HEAD:main
+
+  android:
+    needs: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Dipendenze
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install --legacy-peer-deps --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor-community/text-to-speech@5
+      - name: Asset offline
+        run: node scripts/prepare-offline-assets.mjs
+      - name: Config Capacitor
+        run: |
+          cat > capacitor.config.ts << 'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+          const config: CapacitorConfig = {
+            appId: 'com.pacommunication.analogista2',
+            appName: 'Analogista Virtuale',
+            webDir: 'dist',
+            server: { androidScheme: 'https' }
+          };
+          export default config;
+          EOF
+      - name: Build web
+        run: npx vite build
+      - name: Piattaforma Android
+        run: npx cap add android
+      - name: Permessi
+        run: |
+          sed -i 's#</manifest>#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
+      - name: Licenze
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Compila APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Pubblica APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2-build-${{ github.run_number }}
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+
+  windows:
+    needs: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dipendenze
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install -D --legacy-peer-deps --no-audit --no-fund electron@33 electron-builder@25
+          npm install --legacy-peer-deps --no-audit --no-fund @capacitor-community/text-to-speech@5
+      - name: Build web
+        run: npx vite build
+      - name: Prepara Electron
+        shell: bash
+        run: |
+          mkdir -p electron dist-electron
+          cat > electron/main.cjs << 'EOF'
+          const { app, BrowserWindow, session } = require('electron');
+          const path = require('path');
+          const fs = require('fs');
+          const http = require('http');
+          const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
+          function startServer() {
+            const dist = path.join(__dirname, '..', 'dist');
+            return new Promise((resolve) => {
+              const srv = http.createServer((req, res) => {
+                let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+                let file = path.join(dist, p);
+                if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) { file = path.join(dist, 'index.html'); }
+                res.setHeader('Content-Type', MIME[path.extname(file)] || 'application/octet-stream');
+                res.end(fs.readFileSync(file));
+              });
+              srv.listen(0, '127.0.0.1', () => resolve(srv.address().port));
+            });
+          }
+          async function main() {
+            const port = await startServer();
+            session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['media', 'camera', 'microphone', 'audioCapture', 'videoCapture', 'mediaKeySystem'].includes(permission)));
+            const win = new BrowserWindow({ width: 1100, height: 800, title: 'Analogista Virtuale di Max Pisani', autoHideMenuBar: true });
+            win.loadURL('http://127.0.0.1:' + port);
+          }
+          app.whenReady().then(main);
+          app.on('window-all-closed', () => app.quit());
+          EOF
+          cat > electron-builder.yml << 'EOF'
+          appId: com.pacommunication.analogista2
+          productName: Analogista Virtuale
+          directories:
+            output: release
+          files:
+            - dist/**/*
+            - dist-electron/**/*
+            - package.json
+          win:
+            target: nsis
+          EOF
+          npm pkg set main=dist-electron/main.cjs
+          npx esbuild electron/main.cjs --bundle --platform=node --outfile=dist-electron/main.cjs --external:electron
+      - name: Compila installer
+        run: npx electron-builder --win --publish never
+      - name: Pubblica installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2-build-${{ github.run_number }}
+          files: release/*.exe
