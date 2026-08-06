@@ -1,0 +1,10 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const dest = path.join(root, 'public', 'mediapipe');
+fs.mkdirSync(path.join(dest, 'wasm'), { recursive: true });
+fs.cpSync(path.join(root, 'node_modules', '@mediapipe', 'tasks-vision', 'wasm'), path.join(dest, 'wasm'), { recursive: true });
+const model = await fetch('https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task').then(r => r.arrayBuffer());
+fs.writeFileSync(path.join(dest, 'pose_landmarker_lite.task'), Buffer.from(model));
+console.log('Asset MediaPipe offline pronti.');
