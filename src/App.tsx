@@ -163,4 +163,117 @@ function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, flash }: 
 function Calibrazione({ motion, voice, onDone, onHome }: { motion: Motion; voice: Voice; onDone: () => void; onHome: () => void }) {
   const [sens, setSens] = useState(75);
   const [done, setDone] = useState(false);
-  const [flash, setFlash] =
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    motion.onMove = (d: any) => { setFlash(d === 'forward' ? 'SI' : 'NO'); setTimeout(() => setFlash(null), 1000); };
+    return () => { motion.onMove = null; };
+  }, [motion]);
+  return (
+    <div className="max-w-4xl mx-auto px-4 pb-16 space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-serif font-black text-cyan-400">CALIBRAZIONE</h2>
+        <button onClick={onHome} className="text-xs font-bold uppercase tracking-widest text-cyan-500">← Esci</button>
+      </div>
+      <div className="bg-gray-900/40 border border-gray-800 rounded-xl p-4">
+        <label className="block text-xs font-bold uppercase tracking-widest mb-2 text-gray-400">Sensibilità: {sens}%</label>
+        <input type="range" min={0} max={100} value={sens} onChange={(e) => setSens(parseInt(e.target.value))} className="w-full accent-cyan-400" />
+      </div>
+      <CameraView motion={motion} sensitivity={sens} flash={flash}
+        onVoiceGuide={() => { voice.speak(CALIB_TEXT).catch(() => {}); }}
+        onCalibrated={() => setDone(true)} />
+      {done && (
+        <button onClick={onDone} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Prosegui →</button>
+      )}
+    </div>
+  );
+}
+
+function TestInduttore({ motion, voice, nome, onEsito, onHome }: { motion: Motion; voice: Voice; nome: string; onEsito: (e: Esito) => void; onHome: () => void }) {
+  const [phase, setPhase] = useState<'calib' | 'run' | 'wait'>('calib');
+  const [msg, setMsg] = useState('Premi "Avvia calibrazione" sul video: il test partirà da solo.');
+  const [res, setRes] = useState<{ dx: string; sx: string }>({ dx: '', sx: '' });
+  const [finalEsito, setFinalEsito] = useState<Esito | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; try { voice.cancel(); } catch (e) {} try { motion.stop(); motion.onMove = null; } catch (e) {} }, []);
+  const run = async () => {
+    try {
+      setPhase('run');
+      setMsg('Ascolta le istruzioni…');
+      await voice.speak(nome + ", mettiti in piedi di fronte alla telecamera, braccia distese lungo il corpo, piedi larghezza delle spalle e occhi chiusi. Ti chiederò di muovere prima la mano destra e poi la sinistra e valuterò l'oscillazione del tuo corpo.");
+      if (!alive.current) return;
+      setMsg('Test mano DESTRA…');
+      const dx = await voice.ask("Adesso " + nome + " sfrega il pollice della mano destra con le altre dita per qualche secondo, io rileverò l'oscillazione.", motion);
+      if (!alive.current) return;
+      setRes({ dx: label(dx), sx: '' });
+      await new Promise((r) => setTimeout(r, 1500));
+      if (!alive.current) return;
+      setMsg('Test mano SINISTRA…');
+      const sx = await voice.ask("Bene, adesso fai la stessa cosa con la mano sinistra ed io rileverò l'oscillazione.", motion);
+      if (!alive.current) return;
+      setRes({ dx: label(dx), sx: label(sx) });
+      let risultato = '';
+      if (dx === 'SI' && sx === 'NO') risultato = 'Induttore DESTRO (Sindrome di Giulietta e Romeo: difficoltà a decidere).';
+      else if (dx === 'NO' && sx === 'SI') risultato = 'Induttore SINISTRO (Sindrome di Dante e Beatrice: problema di sogno/conquista).';
+      else risultato = 'Combinazione non chiara: ripeti il test.';
+      const e: Esito = { dx: label(dx), sx: label(sx), risultato };
+      setFinalEsito(e);
+      setMsg(risultato);
+      try { motion.onMove = null; motion.stop(); } catch (err) {}
+      try {
+        const hist = JSON.parse(localStorage.getItem('av2_hist') || '[]');
+        hist.unshift({ when: new Date().toLocaleString(), ...e });
+        localStorage.setItem('av2_hist', JSON.stringify(hist.slice(0, 20)));
+      } catch (err) {}
+      setPhase('wait');
+    } catch (e) {
+      if (alive.current) { setMsg('Test interrotto.'); setPhase('calib'); }
+    }
+  };
+  const repeat = () => {
+    try { voice.cancel(); } catch (e) {}
+    try { motion.stop(); motion.onMove = null; } catch (e) {}
+    setRes({ dx: '', sx: '' });
+    setFinalEsito(null);
+    setPhase('calib');
+    setMsg('Premi "Avvia calibrazione" sul video.');
+  };
+  return (
+    <div className="max-w-4xl mx-auto px-4 pb-24 space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-serif font-black text-cyan-400">TEST INDUTTORE</h2>
+        <button onClick={onHome} className="text-xs font-bold uppercase tracking-widest text-cyan-500">← Esci</button>
+      </div>
+      <CameraView motion={motion} sensitivity={75} flash={null} onCalibrated={() => { if (phase === 'calib') run(); }} />
+      <div className="text-center p-6 rounded-2xl bg-gray-900/40 border border-gray-800 min-h-[90px] flex flex-col justify-center">
+        <p className="text-lg text-gray-200">{msg}</p>
+        <div className="mt-3 flex justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-gray-500">
+          <p>DX: <span className="text-cyan-400">{res.dx || '-'}</span></p>
+          <p>SX: <span className="text-cyan-400">{res.sx || '-'}</span></p>
+        </div>
+      </div>
+      <div className="fixed bottom-6 left-0 right-0 flex justify-center gap-3 px-4 z-50">
+        {phase !== 'calib' && (
+          <button onClick={repeat} className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-2xl text-xs font-black uppercase tracking-widest border border-white/10">🔁 Ripeti</button>
+        )}
+        {phase === 'wait' && finalEsito && (
+          <button onClick={() => onEsito(finalEsito)} className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest">Prosegui →</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EsitoScreen({ esito, onHome }: { esito: Esito; onHome: () => void }) {
+  return (
+    <div className="max-w-md mx-auto px-6 pb-16">
+      <div className="bg-gray-900/60 border border-white/10 rounded-2xl p-6 space-y-4 text-center">
+        <h2 className="text-lg font-serif font-black text-cyan-400">ESITO TEST INDUTTORE</h2>
+        <p className="text-sm text-gray-400">Mano destra: <span className="text-cyan-400 font-bold">{esito.dx}</span></p>
+        <p className="text-sm text-gray-400">Mano sinistra: <span className="text-cyan-400 font-bold">{esito.sx}</span></p>
+        <p className="text-base text-gray-100 font-semibold">{esito.risultato}</p>
+        <p className="text-[10px] text-gray-500">Dati salvati solo su questo dispositivo.</p>
+        <button onClick={onHome} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-4 rounded-2xl uppercase tracking-widest">Nuova sessione</button>
+      </div>
+    </div>
+  );
+}
