@@ -70,28 +70,24 @@ export default function App() {
         <h1 className="font-serif font-black text-2xl text-cyan-400">Analogista Virtuale</h1>
         <p className="text-[10px] uppercase tracking-widest text-gray-500">© 2026 Max Pisani - PACommunication</p>
       </header>
-      <NavBar tab={tab} setTab={(t) => { setTab(t); setTest(null); setEsito(null); }} />
+      <NavBar tab={tab} setTab={(t) => { voice.cancel(); setTab(t); setTest(null); setEsito(null); }} />
       <main className="pt-6 pb-16">
         {esito ? (
           <EsitoScreen esito={esito} onHome={goHome} />
         ) : test === 'calib' ? (
-          <Calibrazione motion={motion} voice={voice} voiceActive={voiceActive} onVoiceGuide={() => toggleVoice(CALIB_TEXT)} onHome={() => setTest(null)} onDone={() => setTest(null)} />
+          <Calibrazione motion={motion} voice={voice} voiceActive={voiceActive} onVoiceGuide={() => toggleVoice(CALIB_TEXT)} onHome={() => setTest(null)} onDone={() => { voice.cancel(); setTest(null); }} />
         ) : test === 'induttore' ? (
-          <TestInduttore motion={motion} voice={voice} nome={nome} onHome={() => setTest(null)} onEsito={(e) => setEsito(e)} />
+          <TestInduttore motion={motion} voice={voice} nome={nome} onHome={() => setTest(null)} onEsito={(e) => { voice.cancel(); setEsito(e); }} />
         ) : test === 'nome' ? (
-          <TestNome motion={motion} voice={voice} nome={nome} genere={genere} onHome={() => setTest(null)} onEsito={(e) => setEsito(e)} />
+          <TestNome motion={motion} voice={voice} nome={nome} genere={genere} onHome={() => setTest(null)} onEsito={(e) => { voice.cancel(); setEsito(e); }} />
         ) : test ? (
           <PlaceholderTest nome={TEST_LIST.find((t) => t.id === test)?.nome || ''} onHome={() => setTest(null)} />
         ) : tab === 'home' ? (
           <HomeGrid onOpen={(id) => setTest(id)} />
         ) : tab === 'risultati' ? (
           <Risultati />
-        ) : tab === 'storico' ? (
-          <Storico />
-        ) : tab === 'video' ? (
-          <SimpleCard titolo="VIDEO CORSO" testo="Qui arriveranno i video del corso, come nella versione originale." />
         ) : (
-          <SimpleCard titolo="CONTATTI" testo="PACommunication – Max Pisani. Area riservata operatore." />
+          <Storico />
         )}
       </main>
     </div>
@@ -159,13 +155,13 @@ function Anagrafica({ onDone }: { onDone: () => void }) {
 }
 
 function NavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
-    const tabs: { id: Tab; icon: string; label: string }[] = [
+  const tabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'home', icon: '🏠', label: 'Home' },
     { id: 'risultati', icon: '📊', label: 'Risultati' },
     { id: 'storico', icon: '📖', label: 'Storico' },
   ];
   return (
-        <nav className="sticky top-0 z-50 flex justify-center gap-1 border-b border-white/10 bg-[#0a0a0c]/95 backdrop-blur-md">
+    <nav className="sticky top-0 z-50 flex justify-center gap-1 border-b border-white/10 bg-[#0a0a0c]/95 backdrop-blur-md">
       {tabs.map((t) => (
         <button key={t.id} onClick={() => setTab(t.id)}
           className={`flex flex-col items-center px-4 py-2 text-[11px] font-bold uppercase tracking-widest border-b-2 ${tab === t.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
