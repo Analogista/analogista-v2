@@ -7,7 +7,13 @@ export class Voice {
   constructor() {
     try { this.synth.getVoices(); this.synth.onvoiceschanged = () => this.synth.getVoices(); } catch (e) { }
   }
-  cancel() { this.epoch++; try { this.synth.cancel(); } catch (e) { } }
+    cancel() {
+    this.epoch++;
+    try { this.synth.cancel(); } catch (e) { }
+    try {
+      import('@capacitor-community/text-to-speech').then((m: any) => { try { m.TextToSpeech.stop?.(); } catch (e2) { } }).catch(() => { });
+    } catch (e) { }
+  }
   private info(kind: 'info' | 'error', text: string) { this.onStatus?.({ kind, text }); }
   private async nativeSpeak(text: string, my: number): Promise<boolean> {
     if (!(window as any).Capacitor) return false;
