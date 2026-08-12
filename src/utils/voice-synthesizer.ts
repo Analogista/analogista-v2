@@ -71,8 +71,7 @@ export class VoiceSynthesizer {
           pitch: 1,
           volume: 1
         }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('motore nativo non risponde (4s)')), 4000)
+        new Promise((_, rj) => setTimeout(() => rj(new Error('timeout voce nativa')), Math.max(20000, text.length * 200)))
         )
       ]);
       
