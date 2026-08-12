@@ -79,7 +79,7 @@ export class Voice {
     const my = this.epoch;
     await this.speak(question);
     if (my !== this.epoch) return 'NONE';
-    this.info('info', 'Attendo risposta: oscilla avanti (SI) o indietro (NO).');
+    this.info('info', 'Attendo una risposta: oscilla in avanti per dire sì, indietro per dire no.');
     return new Promise((resolve) => {
       let finished = false;
       const finish = (r: 'SI' | 'NO' | 'NONE') => {
@@ -97,7 +97,7 @@ export class Voice {
       motion.onMove = async (d: Direction) => {
         motion.stop();
         const r = d === 'forward' ? 'SI' : 'NO';
-        await this.speak(r === 'SI' ? 'Ho rilevato un SI.' : 'Ho rilevato un NO.');
+        await this.speak(r === 'SI' ? 'Ho rilevato un sì.' : 'Ho rilevato un no.');
         finish(r);
       };
       motion.start();
