@@ -4,12 +4,6 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-    rollupOptions: {
-      external: ['@capacitor-community/text-to-speech']
-    }
-  },
+  build: { outDir: 'dist', emptyOutDir: true },
   publicDir: 'public'
 });
