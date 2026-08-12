@@ -72,7 +72,6 @@ export class VoiceSynthesizer {
           volume: 1
         }),
         new Promise((_, rj) => setTimeout(() => rj(new Error('timeout voce nativa')), Math.max(20000, text.length * 200)))
-        )
       ]);
       
       return true;
