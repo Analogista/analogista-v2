@@ -159,15 +159,13 @@ function Anagrafica({ onDone }: { onDone: () => void }) {
 }
 
 function NavBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
-  const tabs: { id: Tab; icon: string; label: string }[] = [
+    const tabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'home', icon: '🏠', label: 'Home' },
     { id: 'risultati', icon: '📊', label: 'Risultati' },
-    { id: 'video', icon: '🎬', label: 'Video Corso' },
     { id: 'storico', icon: '📖', label: 'Storico' },
-    { id: 'contatti', icon: '📞', label: 'Contatti' },
   ];
   return (
-    <nav className="flex justify-center gap-1 border-b border-white/10">
+        <nav className="sticky top-0 z-50 flex justify-center gap-1 border-b border-white/10 bg-[#0a0a0c]/95 backdrop-blur-md">
       {tabs.map((t) => (
         <button key={t.id} onClick={() => setTab(t.id)}
           className={`flex flex-col items-center px-4 py-2 text-[11px] font-bold uppercase tracking-widest border-b-2 ${tab === t.id ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
