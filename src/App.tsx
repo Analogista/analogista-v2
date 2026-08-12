@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Motion } from './motion';
 import { Voice } from './voice';
 
-type Tab = 'home' | 'risultati' | 'video' | 'storico' | 'contatti';
+type Tab = 'home' | 'risultati' | 'storico';
 type TestId = null | 'calib' | 'induttore' | 'nome' | 'distonici' | 'sigilli' | 'timeline' | 'testimone' | 'giorno';
 type Esito = { header: string; l1: string; v1: string; l2: string; v2: string; risultato: string };
 
