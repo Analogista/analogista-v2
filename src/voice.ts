@@ -16,7 +16,7 @@ export class Voice {
       if (my !== this.epoch) return false;
       await Promise.race([
         mod.TextToSpeech.speak({ text, lang: 'it-IT', rate: 0.95, pitch: 1, volume: 1 }),
-        new Promise((_, rj) => setTimeout(() => rj(new Error('motore nativo non risponde (4s)')), 4000))
+        new Promise((_, rj) => setTimeout(() => rj(new Error('timeout voce nativa')), Math.max(20000, text.length * 200)))
       ]);
       return true;
     } catch (e: any) {
