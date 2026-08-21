@@ -15,6 +15,7 @@ export class Motion {
   private last: Direction | 'none' = 'none';
   private lastEmit = 0;
   onMove: ((d: Direction) => void) | null = null;
+  onOffset: ((offset: number) => void) | null = null;
   async init(video: HTMLVideoElement) {
     this.video = video;
     const packaged = !!(window as any).Capacitor || navigator.userAgent.toLowerCase().includes('electron');
@@ -47,6 +48,7 @@ export class Motion {
         const raw = this.depth(lm);
         this.smoothed = this.smoothed === null ? raw : this.smoothed * 0.8 + raw * 0.2;
         const off = this.smoothed - this.neutral;
+                this.onOffset?.(off);
         const cur: Direction | 'none' =
           off > this.sensitivity ? 'forward' :
           off < -this.sensitivity ? 'backward' :
