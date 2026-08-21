@@ -4,17 +4,49 @@ export class Voice {
   onStatus: ((i: VoiceInfo) => void) | null = null;
   private synth = window.speechSynthesis;
   private epoch = 0;
+
   constructor() {
-    try { this.synth.getVoices(); this.synth.onvoiceschanged = () => this.synth.getVoices(); } catch (e) { }
+    try {
+      this.synth.getVoices();
+      this.synth.onvoiceschanged = () => this.synth.getVoices();
+    } catch (e) { }
   }
-      cancel() {
+
+  cancel() {
     this.epoch++;
     try { this.synth.cancel(); } catch (e) { }
     try {
-      import('@capacitor-community/text-to-speech').then((m: any) => { try { m.TextToSpeech.stop?.(); } catch (e2) { } }).catch(() => { });
+      import('@capacitor-community/text-to-speech')
+        .then((m: any) => { try { m.TextToSpeech.stop?.(); } catch (e2) { } })
+        .catch(() => { });
     } catch (e) { }
     this.info('info', '');
   }
+
+  private info(kind: 'info' | 'error', text: string) {
+    this.onStatus?.({ kind, text });
+  }
+
+  private async nativeSpeak(text: string, my: number): Promise<boolean> {
+    if (!(window as any).Capacitor) return false;
+    try {
+      const mod: any = await import('@capacitor-community/text-to-speech');
+      if (my !== this.epoch) return false;
+      await Promise.race([
+        mod.TextToSpeech.speak({ text, lang: 'it-IT', rate: 0.95, pitch: 1, volume: 1 }),
+        new Promise((_, rj) => setTimeout(() => rj(new Error('timeout voce nativa')), Math.max(20000, text.length * 200)))
+      ]);
+      return true;
+    } catch (e: any) {
+      try {
+        const m: any = await import('@capacitor-community/text-to-speech');
+        m.TextToSpeech.stop?.();
+      } catch (e2) { }
+      if (my === this.epoch) this.info('error', 'Voce nativa KO: ' + String(e?.message || e));
+      return false;
+    }
+  }
+
   speak(text: string): Promise<void> {
     const my = this.epoch;
     return new Promise((resolve) => {
@@ -65,6 +97,7 @@ export class Voice {
       execute();
     });
   }
+
   async ask(question: string, motion: Motion): Promise<'SI' | 'NO' | 'NONE'> {
     const my = this.epoch;
     await this.speak(question);
