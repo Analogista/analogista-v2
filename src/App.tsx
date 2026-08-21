@@ -212,17 +212,24 @@ function HomeGrid({ onOpen }: { onOpen: (id: Exclude<TestId, null>) => void }) {
   );
 }
 function OscillationBar({ offset, threshold }: { offset: number; threshold: number }) {
-  const maxDisplay = Math.max(0.008, threshold * 1.6);
-  const normalized = Math.max(-1, Math.min(1, offset / maxDisplay));
-  const percent = 50 + normalized * 45;
-  const inNeutral = Math.abs(offset) < threshold * 0.4;
-  const color = inNeutral ? 'bg-green-500' : offset > 0 ? 'bg-cyan-400' : 'bg-rose-500';
-  const neutralWidth = (threshold * 0.4 / maxDisplay) * 45;
+  const offsetPercent = (offset / (threshold * 2)) * 100;
+  const clampedOffset = Math.max(-100, Math.min(100, offsetPercent));
   return (
-    <div className="absolute top-14 left-1/2 -translate-x-1/2 w-[85%] h-3 bg-black/60 rounded-full border border-white/20 overflow-hidden z-10">
-      <div className="absolute top-0 h-full bg-green-500/20" style={{ left: `${50 - neutralWidth}%`, width: `${neutralWidth * 2}%` }} />
-      <div className="absolute top-0 left-1/2 w-0.5 h-full bg-white/40" />
-      <div className={`absolute top-0 w-4 h-full rounded-full ${color}`} style={{ left: `${percent}%`, transform: 'translateX(-50%)', transition: 'left 80ms linear' }} />
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-md bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 z-10">
+      <div className="flex justify-between text-[8px] font-mono text-white/40 uppercase tracking-wider mb-1">
+        <span>NO (Indietro)</span>
+        <span className="text-cyan-400">Centro</span>
+        <span>SI (Avanti)</span>
+      </div>
+      <div className="w-full h-1.5 bg-white/10 rounded-full relative overflow-hidden">
+        <div className="absolute inset-y-0 left-1/2 w-0.5 bg-white/30 z-10" />
+        <div 
+          className={`absolute inset-y-0 rounded-full transition-all duration-75 ${
+            clampedOffset >= 0 ? 'bg-cyan-400 left-1/2' : 'bg-rose-500 right-1/2'
+          }`}
+          style={{ width: `${Math.min(Math.abs(clampedOffset) / 2, 50)}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -235,10 +242,16 @@ function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, voiceActi
   const [countdown, setCountdown] = useState(0);
   const [calibrating, setCalibrating] = useState(false);
   const [bodyOffset, setBodyOffset] = useState(0);
+  const offsetBuffer = useRef<number[]>([]);
   const thr = 0.05 - (sensitivity / 100) * 0.045;
 
-  useEffect(() => {
-    motion.onOffset = (o) => setBodyOffset(o);
+    useEffect(() => {
+    motion.onOffset = (o) => {
+      offsetBuffer.current.push(o);
+      if (offsetBuffer.current.length > 5) offsetBuffer.current.shift();
+      const avg = offsetBuffer.current.reduce((a, b) => a + b, 0) / offsetBuffer.current.length;
+      setBodyOffset(avg);
+    };
     return () => { motion.onOffset = null; };
   }, [motion]);
 
