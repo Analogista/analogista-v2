@@ -48,7 +48,7 @@ export class Motion {
         const raw = this.depth(lm);
         this.smoothed = this.smoothed === null ? raw : this.smoothed * 0.8 + raw * 0.2;
         const off = this.smoothed - this.neutral;
-                this.onOffset?.(off);
+        this.onOffset?.(off);
         const cur: Direction | 'none' =
           off > this.sensitivity ? 'forward' :
           off < -this.sensitivity ? 'backward' :
