@@ -7,29 +7,13 @@ export class Voice {
   constructor() {
     try { this.synth.getVoices(); this.synth.onvoiceschanged = () => this.synth.getVoices(); } catch (e) { }
   }
-    cancel() {
+      cancel() {
     this.epoch++;
     try { this.synth.cancel(); } catch (e) { }
     try {
       import('@capacitor-community/text-to-speech').then((m: any) => { try { m.TextToSpeech.stop?.(); } catch (e2) { } }).catch(() => { });
     } catch (e) { }
-  }
-  private info(kind: 'info' | 'error', text: string) { this.onStatus?.({ kind, text }); }
-  private async nativeSpeak(text: string, my: number): Promise<boolean> {
-    if (!(window as any).Capacitor) return false;
-    try {
-      const mod: any = await import('@capacitor-community/text-to-speech');
-      if (my !== this.epoch) return false;
-      await Promise.race([
-        mod.TextToSpeech.speak({ text, lang: 'it-IT', rate: 0.95, pitch: 1, volume: 1 }),
-        new Promise((_, rj) => setTimeout(() => rj(new Error('timeout voce nativa')), Math.max(20000, text.length * 200)))
-      ]);
-      return true;
-    } catch (e: any) {
-      try { const m: any = await import('@capacitor-community/text-to-speech'); m.TextToSpeech.stop?.(); } catch (e2) { }
-      if (my === this.epoch) this.info('error', 'Voce nativa KO: ' + String(e?.message || e));
-      return false;
-    }
+    this.info('info', '');
   }
   speak(text: string): Promise<void> {
     const my = this.epoch;
