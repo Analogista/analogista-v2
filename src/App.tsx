@@ -10,11 +10,18 @@ const CALIB_TEXT = "Poggia lo smartphone o il pc di fronte a te e mettiti in pie
 
 const label = (r: string) => (r === 'SI' ? 'Avanti' : r === 'NO' ? 'Indietro' : 'Non rilevato');
 
+const PUNTI_MAPPING: Record<string, string> = {
+  famiglia: "rapporti con la famiglia d'origine",
+  sentimentali: "rapporti sentimentali e affettivi",
+  sessuali: "rapporti sessuali e passionali",
+  autorealizzazione: "autorealizzazione, hobby e lavoro",
+};
+
 const TEST_LIST: { id: Exclude<TestId, null>; num: string; nome: string; gruppo: string; pronto: boolean }[] = [
   { id: 'calib', num: '4', nome: 'Calibrazione', gruppo: 'PREPARAZIONE', pronto: true },
   { id: 'induttore', num: '6', nome: 'Test Induttore', gruppo: 'STRUMENTI DI INDAGINE', pronto: true },
   { id: 'nome', num: '7', nome: 'Test Nome', gruppo: 'STRUMENTI DI INDAGINE', pronto: true },
-  { id: 'distonici', num: '8', nome: 'Punti Distonici', gruppo: 'STRUMENTI DI INDAGINE', pronto: false },
+  { id: 'distonici', num: '8', nome: 'Punti Distonici', gruppo: 'STRUMENTI DI INDAGINE', pronto: true },
   { id: 'sigilli', num: '9', nome: 'Sigilli-Vincoli', gruppo: 'STRUMENTI DI INDAGINE', pronto: false },
   { id: 'timeline', num: '10', nome: 'Time Line', gruppo: 'STRUMENTI DI INDAGINE', pronto: false },
   { id: 'testimone', num: '11', nome: 'Testimone Chiave', gruppo: 'STRUMENTI DI INDAGINE', pronto: false },
@@ -61,7 +68,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans bg-[#0a0a0c] text-white">
-      {statusMsg && (
+      {statusMsg && statusMsg.text && (
         <div className={`fixed top-0 left-0 right-0 z-[100] px-4 py-2 text-center text-xs font-mono ${statusMsg.kind === 'error' ? 'bg-rose-950 text-rose-300' : 'bg-cyan-950 text-cyan-300'}`}>
           {statusMsg.text}
         </div>
@@ -80,6 +87,8 @@ export default function App() {
           <TestInduttore motion={motion} voice={voice} nome={nome} onHome={() => setTest(null)} onEsito={(e) => { voice.cancel(); setEsito(e); }} />
         ) : test === 'nome' ? (
           <TestNome motion={motion} voice={voice} nome={nome} genere={genere} onHome={() => setTest(null)} onEsito={(e) => { voice.cancel(); setEsito(e); }} />
+        ) : test === 'distonici' ? (
+          <TestPuntiDistonici motion={motion} voice={voice} nome={nome} onHome={() => setTest(null)} onEsito={(e) => { voice.cancel(); setEsito(e); }} />
         ) : test ? (
           <PlaceholderTest nome={TEST_LIST.find((t) => t.id === test)?.nome || ''} onHome={() => setTest(null)} />
         ) : tab === 'home' ? (
@@ -459,6 +468,129 @@ function TestNome({ motion, voice, nome, genere, onEsito, onHome }: { motion: Mo
         <div className="mt-3 flex justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-gray-500">
           <p>NOME VERO: <span className="text-cyan-400">{res.vero || '-'}</span></p>
           <p>NOME FALSO: <span className="text-cyan-400">{res.falso || '-'}</span></p>
+        </div>
+      </div>
+      <div className="fixed bottom-6 left-0 right-0 flex justify-center gap-3 px-4 z-50">
+        {phase !== 'calib' && (
+          <button onClick={repeat} className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-2xl text-xs font-black uppercase tracking-widest border border-white/10">🔁 Ripeti</button>
+        )}
+        {phase === 'wait' && finalEsito && (
+          <button onClick={() => onEsito(finalEsito)} className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest">Prosegui →</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TestPuntiDistonici({ motion, voice, nome, onEsito, onHome }: { motion: Motion; voice: Voice; nome: string; onEsito: (e: Esito) => void; onHome: () => void }) {
+  const [phase, setPhase] = useState<'calib' | 'run' | 'wait'>('calib');
+  const [msg, setMsg] = useState('Premi "Avvia calibrazione" sul video: il test partirà da solo.');
+  const [results, setResults] = useState<Record<string, string>>({});
+  const [finalEsito, setFinalEsito] = useState<Esito | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; try { voice.cancel(); } catch (e) {} try { motion.stop(); motion.onMove = null; } catch (e) {} }, []);
+
+  const run = async () => {
+    try {
+      setPhase('run');
+      setResults({});
+      setMsg('Indagheremo 4 aree della tua vita…');
+      await voice.speak("Perfetto. Ora indagherò 4 aree della tua vita per identificare quella su cui lavorare. Rispondi sì o no con l'oscillazione del corpo.");
+      if (!alive.current) return;
+
+      const puntiKeys = Object.keys(PUNTI_MAPPING);
+      const answers: Record<string, string> = {};
+
+      for (const key of puntiKeys) {
+        const area = PUNTI_MAPPING[key];
+        setMsg('Area in esame: ' + area);
+        const r = await voice.ask("Caro inconscio, sei soddisfatto di come " + nome + " sta gestendo i " + area + "? Sì o no? Attendo risposta.", motion);
+        if (!alive.current) return;
+        answers[key] = r;
+        setResults({ ...answers });
+        await new Promise((rr) => setTimeout(rr, 1500));
+        if (!alive.current) return;
+      }
+
+      const nonSoddisfatti = puntiKeys.filter((k) => answers[k] === 'NO');
+      let principale = '';
+      let risultato = '';
+
+      if (nonSoddisfatti.length === 0) {
+        risultato = 'Nessun punto distonico rilevato!';
+      } else if (nonSoddisfatti.length === 1) {
+        principale = PUNTI_MAPPING[nonSoddisfatti[0]];
+        risultato = 'Punto distonico identificato: ' + principale;
+      } else {
+        setMsg('Sono emersi più punti distonici. Ora determiniamo il principale…');
+        await voice.speak("Sono emersi più punti distonici. Ora ti chiederò quale vuoi risolvere subito.");
+        if (!alive.current) return;
+        for (const key of nonSoddisfatti) {
+          const area = PUNTI_MAPPING[key];
+          setMsg('Vuoi risolvere subito: ' + area + '?');
+          const r = await voice.ask("Vuoi risolvere " + area + "? Sì o no, attendo risposta.", motion);
+          if (!alive.current) return;
+          if (r === 'SI') {
+            principale = area;
+            break;
+          }
+        }
+        if (!principale) principale = PUNTI_MAPPING[nonSoddisfatti[0]];
+        risultato = 'Punto principale: ' + principale;
+      }
+
+      const countSI = puntiKeys.filter((k) => answers[k] === 'SI').length;
+      const countNO = nonSoddisfatti.length;
+      setFinalEsito({
+        header: 'ESITO TEST PUNTI DISTONICI',
+        l1: 'Aree soddisfatte',
+        v1: countSI + ' su ' + puntiKeys.length,
+        l2: 'Aree distoniche',
+        v2: countNO + ' su ' + puntiKeys.length,
+        risultato: risultato,
+      });
+      setMsg(risultato);
+      try { motion.onMove = null; motion.stop(); } catch (e) {}
+      try {
+        const hist = JSON.parse(localStorage.getItem('av2_hist') || '[]');
+        hist.unshift({ when: new Date().toLocaleString(), test: 'Punti Distonici', a: countSI + ' ok', b: countNO + ' no', risultato });
+        localStorage.setItem('av2_hist', JSON.stringify(hist.slice(0, 50)));
+      } catch (e) {}
+      setPhase('wait');
+    } catch (e) {
+      if (alive.current) { setMsg('Test interrotto.'); setPhase('calib'); }
+    }
+  };
+
+  const repeat = () => {
+    try { voice.cancel(); } catch (e) {}
+    try { motion.stop(); motion.onMove = null; } catch (e) {}
+    setResults({});
+    setFinalEsito(null);
+    setPhase('calib');
+    setMsg('Premi "Avvia calibrazione" sul video.');
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 pb-24 space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-serif font-black text-cyan-400">8) PUNTI DISTONICI</h2>
+        <button onClick={onHome} className="text-xs font-bold uppercase tracking-widest text-cyan-500">← Home</button>
+      </div>
+      <CameraView motion={motion} sensitivity={75} flash={null} onCalibrated={() => { if (phase === 'calib') run(); }} />
+      <div className="text-center p-6 rounded-2xl bg-gray-900/40 border border-gray-800 min-h-[90px] flex flex-col justify-center">
+        <p className="text-lg text-gray-200">{msg}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
+          {Object.entries(PUNTI_MAPPING).map(([key, area]) => {
+            const v = results[key];
+            const color = v === 'SI' ? 'text-green-400' : v === 'NO' ? 'text-rose-400' : 'text-gray-500';
+            return (
+              <div key={key} className="bg-black/30 rounded-lg px-3 py-2 text-left">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wider">{area}</p>
+                <p className={'font-black ' + color}>{v === 'SI' ? '✓ Sì' : v === 'NO' ? '✗ No' : '—'}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="fixed bottom-6 left-0 right-0 flex justify-center gap-3 px-4 z-50">
