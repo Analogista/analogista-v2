@@ -215,7 +215,7 @@ function OscillationBar({ offset, threshold }: { offset: number; threshold: numb
   const offsetPercent = (offset / (threshold * 2)) * 100;
   const clampedOffset = Math.max(-100, Math.min(100, offsetPercent));
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-md bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 z-10">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[85%] max-w-md bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 z-10">
       <div className="flex justify-between text-[8px] font-mono text-white/40 uppercase tracking-wider mb-1">
         <span>NO (Indietro)</span>
         <span className="text-cyan-400">Centro</span>
