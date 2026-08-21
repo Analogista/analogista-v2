@@ -35,10 +35,14 @@ export default function App() {
   const [esito, setEsito] = useState<Esito | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ kind: string; text: string } | null>(null);
   const [voiceActive, setVoiceActive] = useState(false);
+  const [bodyOffset, setBodyOffset] = useState(0);
   const voiceBusy = useRef(false);
   const motionRef = useRef<Motion | null>(null);
   const voiceRef = useRef<Voice | null>(null);
-  if (!motionRef.current) motionRef.current = new Motion();
+  if (!motionRef.current) {
+  motionRef.current = new Motion();
+  motionRef.current.onOffset = (off) => setBodyOffset(off);
+  }
   if (!voiceRef.current) {
     voiceRef.current = new Voice();
     voiceRef.current.onStatus = (i) => setStatusMsg(i.text ? i : null);
@@ -207,7 +211,18 @@ function HomeGrid({ onOpen }: { onOpen: (id: Exclude<TestId, null>) => void }) {
     </div>
   );
 }
-
+function OscillationBar({ offset, sensitivity }: { offset: number; sensitivity: number }) {
+  const maxDisplay = 0.05;
+  const normalized = Math.max(-1, Math.min(1, offset / maxDisplay));
+  const percent = 50 + normalized * 45;
+  const color = Math.abs(offset) < sensitivity * 0.4 ? 'bg-green-500' : offset > 0 ? 'bg-cyan-400' : 'bg-rose-500';
+  return (
+    <div className="absolute top-14 left-1/2 -translate-x-1/2 w-[85%] h-3 bg-black/60 rounded-full border border-white/20 overflow-hidden z-10">
+      <div className="absolute top-0 left-1/2 w-0.5 h-full bg-white/40" />
+      <div className={`absolute top-0 w-4 h-full rounded-full ${color}`} style={{ left: `${percent}%`, transform: 'translateX(-50%)', transition: 'left 80ms linear' }} />
+    </div>
+  );
+}
 function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, voiceActive, flash }: {
   motion: Motion; sensitivity: number; onCalibrated?: () => void; onVoiceGuide?: () => void; voiceActive?: boolean; flash: string | null;
 }) {
@@ -216,6 +231,13 @@ function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, voiceActi
   const [camError, setCamError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [calibrating, setCalibrating] = useState(false);
+  const [bodyOffset, setBodyOffset] = useState(0);
+
+  useEffect(() => {
+    motion.onOffset = (o) => setBodyOffset(o);
+    return () => { motion.onOffset = null; };
+  }, [motion]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -260,6 +282,7 @@ function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, voiceActi
   return (
     <div className="relative w-full max-w-3xl mx-auto h-[420px] sm:h-[520px] bg-black rounded-3xl overflow-hidden border border-white/10">
       <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
+      <OscillationBar offset={bodyOffset} sensitivity={sensitivity} />
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <img src="/assets/sagoma.png" alt="Sagoma" className="h-[90%] w-auto object-contain opacity-40"
           onError={(e) => { e.currentTarget.style.display = 'none'; const f = document.getElementById('silhouette-fallback'); if (f) (f as HTMLElement).style.display = 'block'; }} />
@@ -296,7 +319,6 @@ function CameraView({ motion, sensitivity, onCalibrated, onVoiceGuide, voiceActi
     </div>
   );
 }
-
 function Calibrazione({ motion, voice, voiceActive, onVoiceGuide, onDone, onHome }: { motion: Motion; voice: Voice; voiceActive: boolean; onVoiceGuide: () => void; onDone: () => void; onHome: () => void }) {
   const [sens, setSens] = useState(75);
   const [done, setDone] = useState(false);
